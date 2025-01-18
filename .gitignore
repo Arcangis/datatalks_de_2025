@@ -1,3 +1,11 @@
+#Custom
+.vscode/*
+*/infra/.terraform/*
+*/infra/*.lock.hcl
+*/infra/*.tfvars
+*/infra/*.tfstate
+*/infra/*.tfstate.backup
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

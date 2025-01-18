@@ -1,3 +1,10 @@
 FROM python:3.12.8
 
-ENTRYPOINT ["/bin/bash"]
+RUN apt-get install wget
+
+RUN pip install pandas sqlalchemy psycopg2
+
+WORKDIR /app
+COPY ingestion.py ingestion.py 
+
+ENTRYPOINT [ "python", "ingestion.py" ]

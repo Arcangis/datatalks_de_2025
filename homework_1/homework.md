@@ -20,11 +20,23 @@ Run docker with the `python:3.12.8` image in an interactive mode, use the entryp
 
 What's the version of `pip` in the image?
 
-- 24.3.1
+- <b>24.3.1</b>
 - 24.2.1
 - 23.3.1
 - 23.2.1
 
+Dockerfile:
+```Dockerfile
+FROM python:3.12.8
+ENTRYPOINT ["/bin/bash"]
+```
+Bash:
+```bash
+docker build -t python:3.12.8 . 
+docker run -it python:3.12.8
+pip --version
+pip 24.3.1 from /usr/local/lib/python3.12/site-packages/pip (python 3.12)
+```
 
 ## Question 2. Understanding Docker networking and docker-compose
 
@@ -66,8 +78,11 @@ volumes:
 - localhost:5432
 - db:5433
 - postgres:5432
-- db:5432
+- <b>db:5432</b>
 
+Based on: [docker-compose network documentation](https://docs.docker.com/compose/how-tos/networking/)
+- A container is created using db's configuration. It joins the network under the name db.
+-  Networked service-to-service communication uses the CONTAINER_PORT.
 
 ##  Prepare Postgres
 
@@ -89,6 +104,39 @@ Download this data and put it into Postgres.
 You can use the code from the course. It's up to you whether
 you want to use Jupyter or a python script.
 
+```bash
+docker build -t ingestion:v1
+```
+
+- Trip Data:
+```bash
+docker run -it \
+    --network=homework_1_default \
+      ingestion:v1 \
+    --user=postgres \
+    --password=postgres \
+    --host=db \
+    --port=5432 \
+    --db=ny_taxi \
+    --table_name=green_tripdata \
+    --url="https://github.com/DataTalksClub/nyc-tlc-data/releases/download/green/green_tripdata_2019-10.csv.gz" \
+    --date_cols="['lpep_pickup_datetime', 'lpep_dropoff_datetime']"
+```
+
+- Trip Zone:
+```bash
+docker run -it \
+    --network=homework_1_default \
+      ingestion:v1 \
+    --user=postgres \
+    --password=postgres \
+    --host=db \
+    --port=5432 \
+    --db=ny_taxi \
+    --table_name=trip_zone \
+    --url="https://github.com/DataTalksClub/nyc-tlc-data/releases/download/misc/taxi_zone_lookup.csv"
+```
+
 ## Question 3. Trip Segmentation Count
 
 During the period of October 1st 2019 (inclusive) and November 1st 2019 (exclusive), how many trips, **respectively**, happened:
@@ -101,11 +149,31 @@ During the period of October 1st 2019 (inclusive) and November 1st 2019 (exclusi
 Answers:
 
 - 104,802;  197,670;  110,612;  27,831;  35,281
-- 104,802;  198,924;  109,603;  27,678;  35,189
+- <b>104,802;  198,924;  109,603;  27,678;  35,189</b>
 - 104,793;  201,407;  110,612;  27,831;  35,281
 - 104,793;  202,661;  109,603;  27,678;  35,189
 - 104,838;  199,013;  109,645;  27,688;  35,202
 
+SQL:
+```sql
+SELECT COUNT(1),
+	CASE 
+		WHEN trip_distance <= 1
+			THEN 1
+		WHEN trip_distance > 1 AND trip_distance <= 3
+			THEN 2
+		WHEN trip_distance > 3 AND trip_distance <= 7
+			THEN 3
+		WHEN trip_distance > 7 AND trip_distance <= 10
+			THEN 4
+		WHEN trip_distance > 10
+			THEN 5
+	END AS milliage_class
+FROM public.green_tripdata
+WHERE lpep_pickup_datetime BETWEEN '2019-10-01 00:00:00' AND '2019-10-31 23:59:59' AND
+lpep_dropoff_datetime BETWEEN '2019-10-01 00:00:00' AND '2019-10-31 23:59:59'
+GROUP BY milliage_class
+```
 
 ## Question 4. Longest trip for each day
 
@@ -117,8 +185,15 @@ Tip: For every day, we only care about one single trip with the longest distance
 - 2019-10-11
 - 2019-10-24
 - 2019-10-26
-- 2019-10-31
+- <b>2019-10-31</b>
 
+SQL:
+```sql
+SELECT MAX(trip_distance), lpep_pickup_datetime
+FROM public.green_tripdata
+GROUP BY trip_distance, lpep_pickup_datetime
+ORDER BY trip_distance DESC
+```
 
 ## Question 5. Three biggest pickup zones
 
@@ -127,11 +202,22 @@ Which were the top pickup locations with over 13,000 in
 
 Consider only `lpep_pickup_datetime` when filtering by date.
  
-- East Harlem North, East Harlem South, Morningside Heights
+- <b>East Harlem North, East Harlem South, Morningside Heights</b>
 - East Harlem North, Morningside Heights
 - Morningside Heights, Astoria Park, East Harlem South
 - Bedford, East Harlem North, Astoria Park
 
+SQL:
+```sql
+SELECT zn."Zone", SUM(tp.total_amount) as total_zone_amount
+FROM public.green_tripdata AS tp 
+LEFT JOIN  public.trip_zone AS zn
+	ON tp."PULocationID" = zn."LocationID"
+WHERE tp.lpep_pickup_datetime BETWEEN '2019-10-18 00:00:00' AND '2019-10-18 23:59:59'
+GROUP BY zn."Zone"
+HAVING SUM(tp.total_amount) > 13000
+ORDER BY total_zone_amount DESC
+```
 
 ## Question 6. Largest tip
 
@@ -144,10 +230,28 @@ Note: it's `tip` , not `trip`
 We need the name of the zone, not the ID.
 
 - Yorkville West
-- JFK Airport
+- <b>JFK Airport</b>
 - East Harlem North
 - East Harlem South
 
+SQL:
+```sql
+WITH temp_table (tip_amount, "DOLocationID")
+AS (
+	SELECT tp.tip_amount, tp."DOLocationID"
+	FROM public.green_tripdata AS tp 
+	LEFT JOIN  public.trip_zone AS zn
+		ON tp."PULocationID" = zn."LocationID"
+	WHERE tp.lpep_pickup_datetime BETWEEN '2019-10-01 00:00:00' AND '2019-10-31 23:59:59'
+	AND zn."Zone" = 'East Harlem North'
+)
+SELECT MAX(tp.tip_amount), zn."Zone"
+FROM temp_table AS tp 
+LEFT JOIN  public.trip_zone AS zn
+	ON tp."DOLocationID" = zn."LocationID"
+GROUP BY tp.tip_amount, zn."Zone"
+ORDER BY tp.tip_amount DESC
+```
 
 ## Terraform
 
@@ -159,7 +263,13 @@ Copy the files from the course repo
 
 Modify the files as necessary to create a GCP Bucket and Big Query Dataset.
 
-
+Bash:
+```bash
+terraform init
+terraform plan -var-file=vars.tfvars
+terraform apply -var-file=vars.tfvars
+terraform destroy -var-file=vars.tfvars
+```
 ## Question 7. Terraform Workflow
 
 Which of the following sequences, **respectively**, describes the workflow for: 
@@ -171,7 +281,7 @@ Answers:
 - terraform import, terraform apply -y, terraform destroy
 - teraform init, terraform plan -auto-apply, terraform rm
 - terraform init, terraform run -auto-approve, terraform destroy
-- terraform init, terraform apply -auto-approve, terraform destroy
+- <b>terraform init, terraform apply -auto-approve, terraform destroy</b>
 - terraform import, terraform apply -y, terraform rm
 
 
