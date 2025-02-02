@@ -23,13 +23,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "datatalks_de_lifecycle" {
   ]
 }
 
-resource "aws_dynamodb_table" "datatalks_de_dynamodb" {
-  name             = var.dynamodb_name
-  hash_key         = "UUID"
-  read_capacity    = 10
-  write_capacity   = 10 
-  attribute {
-    name = "UUID"
-    type = "S"
-  }
+resource "aws_redshift_cluster" "datatalks_de_redshift" {
+  cluster_identifier  = var.redshift_cluster
+  database_name       = var.redshift_database
+  master_username     = var.redshift_username
+  master_password     = var.redshift_password
+  skip_final_snapshot = true 
+  node_type           = "dc2.large"
+  cluster_type        = "single-node"
 }
